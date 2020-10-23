@@ -125,7 +125,7 @@ void pretty_print(void)
 {
 	int i;
 	
-	printf("Status:\n");
+	printf("Status:");
 	switch(status_regs[0]&0x07){
 	case 0: printf(" Standby"); break;
 	case 1: printf(" Pre Purge"); break;
@@ -139,8 +139,12 @@ void pretty_print(void)
 
 	for (i = 3; i < 7; i++) {
 		if (CHECK_BIT(status_regs[0], i))
-			printf(" %s\n", status[i].desc);
+			printf(" %s", status[i].desc);
 	}
+	printf("\n");
+	/* Outdoor temp: degrees F, 8 bits */
+	printf("Outdoor temp:\t\t%3.0f °C\n", f_to_c((int16_t)temp_regs[4]));
+
 #if OLD
 	/* Supply temp: 0.1 degree C, 16 bits */
 	printf("Supply temp:\t\t%3.0f °F\n", c_to_f(temp_regs[0]/10));
@@ -192,6 +196,10 @@ int modbus_read_boiler(modbus_t *mb)
 	/* Read 1 register from the address 1 for Boiler Model bitfield */
 	if (modbus_read_input_registers(mb, 0x9189, 1, status_regs) != 1) {
 		printf("Error: Modbus read of 1 byte at addr 0x9189 failed\n");
+		return 1;
+	}
+	if (modbus_read_input_registers(mb, 0x9191, 1, &temp_regs[4]) != 1) {
+		printf("Error: Modbus read of outdoor temperature failed");
 		return 1;
 	}
 #if OLD
@@ -269,7 +277,7 @@ int main(int argc, char **argv)
 	if (ipaddr[0])
 		mb = modbus_new_tcp(ipaddr, port);
 	else
-		mb = modbus_new_rtu(serport, 19200, 'E', 8, 1);
+		mb = modbus_new_rtu(serport, 19200, 'N', 8, 1);
 
 
 	if (!mb) {
