@@ -1,0 +1,5 @@
+mbusd is installed as a systemd service
+systemctl status mbusd@ttyUSB0.service
+
+configuration is in /etc/mbusd/mbusd-ttyUSB0.conf
+
