@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2014 Eric Sandeen <sandeen@sandeen.net>
- *
+ * Changes for Weir Mclain Evergreen boilers
+ * Copyright (c) 2020 Windview Software Solutions <kadorken@windview.ca>*
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2 of the License, or
@@ -18,6 +19,7 @@
 
 /*
  * tt-status: Show status of a Triangle Tube Solo Prestige boiler via ModBus
+ * Modified completely to deal with Evergreen Boiler from Weir Mclain
  *
  * Usually pointed at a RS-485 serial port device, but may also query through
  * a ModBus/TCP gateway such as mbusd (http://http://mbus.sourceforge.net/)
@@ -35,7 +37,7 @@
 
 void usage(void)
 {
-	printf("Usage: tt-status [-h] [-d] [-S slave] [-c|-t] -s serial port][-i ip addr [-p port]]\n\n");
+	printf("Usage: modbus_status [-h] [-d] [-S slave] [-c|-t] -s serial port][-i ip addr [-p port]]\n\n");
 	printf("-h\tShow this help\n");
 	printf("-d\tEnable debug, default 0\n");
 	printf("-S\tModbus slave id, default 1\n");
@@ -47,6 +49,10 @@ void usage(void)
 	exit(1);
 }
 
+float f_to_c(float f)
+{
+	return (f - 32)*5/9;
+}
 float c_to_f(float c)
 {
 	return ((c * 9)/5 + 32);
@@ -57,15 +63,19 @@ struct status_bits {
 	char	*desc;
 };
 
+/*
+
+*/
+#define MADDR_BOILER_STATUS 137
 struct status_bits status[] = {
-	{ 0, "PC Manual Mode" },
-	{ 1, "DHW Mode" },
-	{ 2, "CH Mode" },
-	{ 3, "Freeze Protection Mode" },
-	{ 4, "Flame Present" },
-	{ 5, "CH(1) Pump" },
-	{ 6, "DHW Pump" },
-	{ 7, "System / CH2 Pump" }
+	{ 0, "" },
+	{ 1, "" },
+	{ 2, "" },
+	{ 3, "" },
+	{ 4, "Running DHW" },
+	{ 5, "Local Priority 1 running" },
+	{ 6, "Local Priority 2 running" },
+	{ 7, "Local Priority 3 running" }
 };
 
 uint16_t status_regs[1];/* Holds results of register reads */
@@ -105,6 +115,7 @@ void thingspeak_print(void)
 	/* outdoor temp */
 	printf("field5=%.1f&", c_to_f((int16_t)temp_regs[4]));
 	/* DHW temp */
+
 	printf("field6=%.1f&", c_to_f((int16_t)temp_regs[2]));
 	/* Status */
 	printf("field7=%d\n", status_regs[0]);
@@ -113,23 +124,31 @@ void thingspeak_print(void)
 void pretty_print(void)
 {
 	int i;
-
+	
 	printf("Status:\n");
-	if (status_regs[0] == 0)
-		printf(" Standby\n");
+	switch(status_regs[0]&0x07){
+	case 0: printf(" Standby"); break;
+	case 1: printf(" Pre Purge"); break;
+	case 2: printf(" Ignition"); break;
+	case 3:
+	case 4:
+	case 5: printf(" Heating"); break;
+	case 6: printf(" Post Purge"); break;
+	case 7: printf(" Lockout");break;
+	}
 
-	for (i = 0; i < 7; i++) {
+	for (i = 3; i < 7; i++) {
 		if (CHECK_BIT(status_regs[0], i))
 			printf(" %s\n", status[i].desc);
 	}
-
+#if OLD
 	/* Supply temp: 0.1 degree C, 16 bits */
 	printf("Supply temp:\t\t%3.0f °F\n", c_to_f(temp_regs[0]/10));
 
 	/* Return temp: degrees C, 8 bits */
 	printf("Return temp:\t\t%3.0f °F\n", c_to_f(temp_regs[1]));
 
-	/* DHW storage temp */
+	 /* DHW storage temp */
 	printf("DHW Storage temp:\t%3.0f °F\n", c_to_f(temp_regs[2]));
 
 	/* Flue temp: degrees C, 8 bits */
@@ -156,6 +175,7 @@ void pretty_print(void)
 	/* DHW setpoint: degrees C, 8 bits, only if set */
 	if (setpt_regs[1] != 0x8000)
 		printf("DHW Setpoint:\t\t%3.0f °F\n", c_to_f(setpt_regs[1]));
+#endif
 }
 
 typedef enum { PRETTY, CSV, THINGSPEAK } printtype;
@@ -169,14 +189,12 @@ int modbus_probe_registers(modbus_t *mb){
 
 int modbus_read_boiler(modbus_t *mb)
 {
-modbus_probe_registers(mb);
-return 1;
 	/* Read 1 register from the address 1 for Boiler Model bitfield */
-	if (modbus_read_input_registers(mb, 0x9101, 1, status_regs) != 1) {
-		printf("Error: Modbus read of 1 byte at addr 0x9101 failed\n");
+	if (modbus_read_input_registers(mb, 0x9189, 1, status_regs) != 1) {
+		printf("Error: Modbus read of 1 byte at addr 0x9189 failed\n");
 		return 1;
 	}
-
+#if OLD
 	/* Read 9 registers from the address 0x300 */
 	if (modbus_read_input_registers(mb, 0x300, 9, temp_regs) != 9) {
 		printf("Error: Modbus read of 9 bytes at addr 0x300 failed\n");
@@ -188,7 +206,7 @@ return 1;
 		printf("Error: Modbus read of 2 bytes at addr 0x500 failed\n");
 		return 1;
 	}
-
+#endif
 	return 0;
 }
 
